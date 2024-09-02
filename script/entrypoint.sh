@@ -19,4 +19,5 @@ fi
 
 $(command -v airflow) db migrate
 
-exec airflow webserver
+# Executar o comando passado como argumento ao entrypoint
+exec airflow "$@"

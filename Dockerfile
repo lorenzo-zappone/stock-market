@@ -31,5 +31,4 @@ USER airflow
 # Definir o entrypoint para o script customizado
 ENTRYPOINT ["/opt/airflow/script/entrypoint.sh"]
 
-# Comando padrão para o webserver do Airflow
-CMD ["airflow", "webserver"]
+# O CMD é definido no entrypoint com base no serviço (webserver ou scheduler)
