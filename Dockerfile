@@ -26,6 +26,7 @@ RUN pip install --no-cache-dir -r /opt/airflow/requirements.txt
 USER root
 # Dar permissão de execução ao script de entrypoint
 RUN chmod +x /opt/airflow/script/entrypoint.sh
+RUN mkdir -p /opt/airflow/logs && chown -R airflow:root /opt/airflow/logs
 
 USER airflow
 # Definir o entrypoint para o script customizado
