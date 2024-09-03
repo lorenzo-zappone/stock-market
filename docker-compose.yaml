@@ -59,6 +59,7 @@ services:
         condition: service_healthy
     volumes:
       - ./dags:/opt/airflow/dags
+      - ./data:/opt/airflow/data
       - ./script/entrypoint.sh:/opt/airflow/script/entrypoint.sh
       - ./requirements.txt:/opt/airflow/requirements.txt
     environment:
@@ -75,6 +76,10 @@ services:
     ports:
       - 9090:8081
       - 7077:7077
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./data:/opt/airflow/data
+      - ./requirements.txt:/opt/airflow/requirements.txt
     environment:
       - SPARK_MODE=master
   spark-worker-1:
@@ -82,6 +87,10 @@ services:
     command: bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
     depends_on:
       - spark-master
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./data:/opt/airflow/data
+      - ./requirements.txt:/opt/airflow/requirements.txt
     environment:
       - SPARK_MODE=worker
       - SPARK_WORKER_CORES=2
