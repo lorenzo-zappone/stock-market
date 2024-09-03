@@ -9,7 +9,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev gcc \
     python3-dev \
     build-essential \
+    default-jdk \
     && rm -rf /var/lib/apt/lists/*
+
+# Configurar as variáveis de ambiente do Java no Dockerfile
+ENV JAVA_HOME="/usr/lib/jvm/default-java"
+ENV PATH="$JAVA_HOME/bin:$PATH"
 
 # Voltar para o usuário padrão do Airflow
 USER airflow

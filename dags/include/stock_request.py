@@ -48,7 +48,13 @@ def fetch_data(symbol, max_retries=3):
 
 def nasdaq_data():
     # Inicializar a sessão Spark
-    spark = SparkSession.builder.appName("AlphaVantageDataIngestion").getOrCreate()
+    # Configurar o Spark com o mestre 'local' e ajustar as opções necessárias
+    spark = SparkSession.builder \
+        .appName("AlphaVantageDataIngestion") \
+        .config("spark.master", "local[*]") \
+        .config("spark.driver.bindAddress", "0.0.0.0") \
+        .config("spark.ui.port", "4040") \
+        .getOrCreate()
 
     # Cria um DataFrame para armazenar os dados de todas as ações
     all_data = []
