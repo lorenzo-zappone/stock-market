@@ -11,6 +11,17 @@ __pycache__/
 
 # Parquet
 .parquet
+.snappy.parquet
+.snappy
+.part*
+part*
+._SUCCESS.crc
+_SUCCESS
+.crc
+
+# Logs
+logs
+.log
 
 # Distribution / packaging
 .Python
