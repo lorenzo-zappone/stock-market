@@ -3,6 +3,7 @@ import pandas as pd
 import pyarrow.parquet as pq
 import plotly.express as px
 from datetime import datetime
+import os
 
 # Load the Parquet directory
 parquet_dir = 'data/dave_landry_analysis.parquet'
@@ -10,6 +11,12 @@ table = pq.ParquetDataset(parquet_dir).read()
 
 # Convert to pandas DataFrame
 df = table.to_pandas()
+
+# Count total records
+total_records = df.shape[0]
+
+# Calculate the size of the Parquet files in MB
+file_size_mb = sum(os.path.getsize(os.path.join(parquet_dir, f)) for f in os.listdir(parquet_dir)) / (1024 * 1024)
 
 # Convert columns to numeric, errors='coerce' will handle any non-numeric values
 df['Close'] = pd.to_numeric(df['Close'], errors='coerce')
@@ -21,6 +28,10 @@ df['Date'] = pd.to_datetime(df['Date'])
 
 # Streamlit app
 st.title("NASDAQ Analysis Results")
+
+# Display the total count of records and file size
+st.write(f"Total Records: {total_records}")
+st.write(f"Total File Size: {file_size_mb:.2f} MB")
 
 # Filter by stock symbol
 symbols = df['Symbol'].unique()
