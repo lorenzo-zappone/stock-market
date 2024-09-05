@@ -68,7 +68,7 @@ if timeframe == 'Weekly':
         'Signal': 'last'
     }).reset_index().sort_values(by='Date', ascending=False)
 elif timeframe == 'Monthly':
-    filtered_df = filtered_df.set_index('Date').resample('M').agg({
+    filtered_df = filtered_df.set_index('Date').resample('ME').agg({
         'Close': 'last',
         'SMA_21': 'last',
         'SMA_50': 'last',
