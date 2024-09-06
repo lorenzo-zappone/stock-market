@@ -182,35 +182,170 @@ elif section == "Análise de Ações":
     else:
         st.warning(f"Recomendação para {selected_symbol}: **{latest_signal}**")
 
-# Seção: Análise de Potencial
+# Seção: Backtest e Simulação de Retorno
 elif section == "Análise de Potencial":
-    st.title("Análise de Potencial Projetado")
-    st.write("Identifique as ações com o maior potencial de compra com base nos sinais mais recentes.")
+    st.title("Análise de Potencial")
+    st.write("Simule o percentual de acerto e o retorno financeiro.")
 
-    # Filtro por intervalo de datas
-    min_date = df['Date'].min()
-    max_date = df['Date'].max()
+    # Filtro por símbolo de ação
+    symbols = df['Symbol'].unique()
+    selected_symbol = st.selectbox("Selecione um símbolo de ação para o backtest:", symbols)
 
-    # Input para selecionar intervalo de datas
-    start_date = st.date_input("Data de Início:", min_value=min_date.date(), max_value=max_date.date(), value=min_date.date())
-    end_date = st.date_input("Data de Fim:", min_value=min_date.date(), max_value=max_date.date(), value=max_date.date())
+    # Filtrar dados com base no símbolo selecionado (antes de aplicar o filtro de data)
+    filtered_df = df[df['Symbol'] == selected_symbol].sort_values('Date')
 
-    # Filtrar dados com base nas datas selecionadas
-    performance_df = df[(df['Date'] >= pd.to_datetime(start_date)) & (df['Date'] <= pd.to_datetime(end_date))]
+    # Filtro de período
+    st.subheader("Selecione o Período para Análise")
+    start_date = st.date_input("Data de Início", value=pd.to_datetime(filtered_df['Date']).min())
+    end_date = st.date_input("Data de Fim", value=pd.to_datetime(filtered_df['Date']).max())
 
-    # Análise das Melhores Ações com base em Retorno Acumulado
-    performance_summary = performance_df.groupby('Symbol')['Return'].sum().reset_index()
-    performance_summary['Retorno Acumulado (%)'] = performance_summary['Return'] * 100
-    performance_summary = performance_summary.sort_values(by='Retorno Acumulado (%)', ascending=False)
+    # Aplicar filtro de período ao DataFrame filtrado por símbolo
+    filtered_df = filtered_df[(filtered_df['Date'] >= pd.to_datetime(start_date)) & 
+                              (filtered_df['Date'] <= pd.to_datetime(end_date))]
 
-    # Exibir as melhores ações
-    st.subheader("Ações com Melhor Desempenho:")
-    st.write(performance_summary.head(5))
+    # Converter colunas para numérico
+    filtered_df['High'] = pd.to_numeric(filtered_df['High'], errors='coerce')
+    filtered_df['Low'] = pd.to_numeric(filtered_df['Low'], errors='coerce')
+    filtered_df['Close'] = pd.to_numeric(filtered_df['Close'], errors='coerce')
+    filtered_df['ATR'] = pd.to_numeric(filtered_df['ATR'], errors='coerce')
 
-    # Análise de Potencial com base nos sinais de 'Buy'
-    recent_signals = performance_df[performance_df['Date'] == performance_df['Date'].max()]
+    # Exibir métricas gerais
+    st.subheader(f"Métricas Gerais para {selected_symbol}")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Retorno Médio", f"{filtered_df['Return'].mean():.2%}")
+    col2.metric("ATR Médio", f"{filtered_df['ATR'].mean():.2f}")
+    col3.metric("RSI Médio", f"{filtered_df['RSI'].mean():.2f}")
 
-    # Exibir as ações com sinal de 'Buy'
-    potential_stocks = recent_signals[recent_signals['Signal'] == 'Buy']
-    st.subheader("Ações com Potencial de Compra:") 
-    st.write(potential_stocks[['Symbol', 'Close', 'SMA_21', 'SMA_50', 'Signal']])
+    # Parâmetros ajustáveis pelo usuário
+    st.subheader("Parâmetros de Backtest")
+    col1, col2 = st.columns(2)
+    target_multiplier = col1.slider("Multiplicador do Alvo (ATR)", 1.0, 3.0, 2.0, 0.1)
+    stop_loss_multiplier = col2.slider("Multiplicador do Stop Loss (ATR)", 0.5, 2.0, 1.5, 0.1)
+
+    # Realizar backtest
+    filtered_df['Resultado'] = 0
+    for i in range(1, len(filtered_df)):
+        if filtered_df.iloc[i]['Signal'] == 'Buy':
+            entry_price = filtered_df.iloc[i]['Close']
+            target = entry_price + target_multiplier * filtered_df.iloc[i]['ATR']
+            stop_loss = entry_price - stop_loss_multiplier * filtered_df.iloc[i]['ATR']
+            
+            for j in range(i+1, len(filtered_df)):
+                if filtered_df.iloc[j]['High'] >= target:
+                    filtered_df.at[filtered_df.index[j], 'Resultado'] = 1  # Acerto
+                    break
+                elif filtered_df.iloc[j]['Low'] <= stop_loss:
+                    filtered_df.at[filtered_df.index[j], 'Resultado'] = -1  # Erro
+                    break
+
+    # Cálculo de métricas para o setup ajustado
+    total_trades = filtered_df['Resultado'].abs().sum()
+    win_trades = filtered_df[filtered_df['Resultado'] == 1].shape[0]
+    loss_trades = filtered_df[filtered_df['Resultado'] == -1].shape[0]
+    win_rate = (win_trades / total_trades) * 100 if total_trades > 0 else 0
+    avg_win = filtered_df[filtered_df['Resultado'] == 1]['Return'].mean()
+    avg_loss = filtered_df[filtered_df['Resultado'] == -1]['Return'].mean()
+    profit_factor = abs(avg_win * win_trades / (avg_loss * loss_trades)) if loss_trades > 0 else float('inf')
+
+    # Exibição dos resultados
+    st.subheader(f"Resultados do Backtest para {selected_symbol}")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Total de Trades", total_trades)
+    col2.metric("Taxa de Acerto", f"{win_rate:.2f}%")
+    col3.metric("Fator de Lucro", f"{profit_factor:.2f}")
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Ganho Médio", f"{avg_win:.2%}")
+    col2.metric("Perda Média", f"{avg_loss:.2%}")
+    col3.metric("Retorno Total", f"{filtered_df['Resultado'].sum() * avg_win:.2%}")
+
+    # Gráfico Interativo dos Trades
+    st.subheader("Visualização Gráfica dos Trades")
+
+    fig = go.Figure()
+
+    # Adiciona a linha de preços
+    fig.add_trace(go.Scatter(
+        x=filtered_df['Date'],
+        y=filtered_df['Close'],
+        mode='lines',
+        name='Preço Fechamento'
+    ))
+
+    # Adiciona as Médias Móveis
+    fig.add_trace(go.Scatter(
+        x=filtered_df['Date'],
+        y=filtered_df['SMA_21'],
+        mode='lines',
+        name='SMA 21'
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=filtered_df['Date'],
+        y=filtered_df['SMA_50'],
+        mode='lines',
+        name='SMA 50'
+    ))
+
+    # Pontos de Entrada (Sinal de Compra)
+    entry_points = filtered_df[filtered_df['Signal'] == 'Buy']
+
+    # Marcar os pontos de entrada (sinal de compra)
+    fig.add_trace(go.Scatter(
+        x=entry_points['Date'],
+        y=entry_points['Close'],
+        mode='markers',
+        marker=dict(color='blue', size=8, symbol='circle'),
+        name='Entrada (Buy)'
+    ))
+
+    # Pontos de Saída de Sucesso (Acertos)
+    exits_success = filtered_df[filtered_df['Resultado'] == 1]
+
+    # Marcar os pontos de acerto (saída de trades bem-sucedidos)
+    fig.add_trace(go.Scatter(
+        x=exits_success['Date'],
+        y=exits_success['Close'],
+        mode='markers',
+        marker=dict(color='green', size=10, symbol='triangle-up'),
+        name='Saída de Sucesso (Target Atingido)'
+    ))
+
+    # Marcar os pontos de erro (stop loss)
+    exits_failure = filtered_df[filtered_df['Resultado'] == -1]
+
+    fig.add_trace(go.Scatter(
+        x=exits_failure['Date'],
+        y=exits_failure['Close'],
+        mode='markers',
+        marker=dict(color='red', size=10, symbol='triangle-down'),
+        name='Erro (Stop Loss Atingido)'
+    ))
+
+    # Layout do gráfico
+    fig.update_layout(
+        title=f"Visualização de Trades para {selected_symbol}",
+        xaxis_title='Data',
+        yaxis_title='Preço',
+        legend=dict(x=0, y=1, traceorder='normal')
+    )
+
+    # Exibir gráfico no Streamlit
+    st.plotly_chart(fig)
+
+    # Adicionar gráficos de ATR e RSI
+    st.subheader("Indicadores Técnicos")
+    
+    # Gráfico do ATR
+    fig_atr = go.Figure()
+    fig_atr.add_trace(go.Scatter(x=filtered_df['Date'], y=filtered_df['ATR'], mode='lines', name='ATR'))
+    fig_atr.update_layout(title='Average True Range (ATR)', xaxis_title='Data', yaxis_title='ATR')
+    st.plotly_chart(fig_atr)
+
+    # Gráfico do RSI
+    fig_rsi = go.Figure()
+    fig_rsi.add_trace(go.Scatter(x=filtered_df['Date'], y=filtered_df['RSI'], mode='lines', name='RSI'))
+    fig_rsi.add_hline(y=70, line_dash="dash", line_color="red", annotation_text="Sobrecomprado")
+    fig_rsi.add_hline(y=30, line_dash="dash", line_color="green", annotation_text="Sobrevendido")
+    fig_rsi.update_layout(title='Relative Strength Index (RSI)', xaxis_title='Data', yaxis_title='RSI')
+    st.plotly_chart(fig_rsi)
