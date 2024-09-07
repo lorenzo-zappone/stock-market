@@ -196,8 +196,14 @@ elif section == "Análise de Potencial":
 
     # Filtro de período
     st.subheader("Selecione o Período para Análise")
-    start_date = st.date_input("Data de Início", value=pd.to_datetime(filtered_df['Date']).min())
-    end_date = st.date_input("Data de Fim", value=pd.to_datetime(filtered_df['Date']).max())
+    
+    # Filtro por intervalo de datas
+    min_date = filtered_df['Date'].min()
+    max_date = filtered_df['Date'].max()
+
+    # Input para selecionar intervalo de datas
+    start_date = st.date_input("Data de Início:", min_value=min_date.date(), max_value=max_date.date(), value=min_date.date())
+    end_date = st.date_input("Data de Fim:", min_value=min_date.date(), max_value=max_date.date(), value=max_date.date())
 
     # Aplicar filtro de período ao DataFrame filtrado por símbolo
     filtered_df = filtered_df[(filtered_df['Date'] >= pd.to_datetime(start_date)) & 
