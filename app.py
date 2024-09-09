@@ -173,15 +173,6 @@ elif section == "Análise de Ações":
                   title=f"Preço e Médias Móveis para {selected_symbol} ({timeframe})")
     st.plotly_chart(fig)
 
-    # Mostrar recomendação de Compra/Manter/Venda
-    latest_signal = filtered_df.iloc[-1]['Signal']
-    if latest_signal == 'Buy':
-        st.success(f"Recomendação para {selected_symbol}: **{latest_signal}**")
-    elif latest_signal == 'Sell':
-        st.error(f"Recomendação para {selected_symbol}: **{latest_signal}**")
-    else:
-        st.warning(f"Recomendação para {selected_symbol}: **{latest_signal}**")
-
 # Seção: Backtest e Simulação de Retorno
 elif section == "Análise de Potencial":
     st.title("Análise de Potencial")
