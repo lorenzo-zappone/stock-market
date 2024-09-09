@@ -191,7 +191,7 @@ elif section == "Análise de Potencial":
     symbols = df['Symbol'].unique()
     selected_symbol = st.selectbox("Selecione um símbolo de ação para o backtest:", symbols)
 
-    # Filtrar dados com base no símbolo selecionado (antes de aplicar o filtro de data)
+    # Filtrar dados com base no símbolo selecionado
     filtered_df = df[df['Symbol'] == selected_symbol].sort_values('Date')
 
     # Filtro de período
@@ -215,21 +215,16 @@ elif section == "Análise de Potencial":
     filtered_df['Close'] = pd.to_numeric(filtered_df['Close'], errors='coerce')
     filtered_df['ATR'] = pd.to_numeric(filtered_df['ATR'], errors='coerce')
 
-    # Exibir métricas gerais
-    st.subheader(f"Métricas Gerais para {selected_symbol}")
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Retorno Médio", f"{filtered_df['Return'].mean():.2%}")
-    col2.metric("ATR Médio", f"{filtered_df['ATR'].mean():.2f}")
-    col3.metric("RSI Médio", f"{filtered_df['RSI'].mean():.2f}")
-
     # Parâmetros ajustáveis pelo usuário
     st.subheader("Parâmetros de Backtest")
     col1, col2 = st.columns(2)
-    target_multiplier = col1.slider("Multiplicador do Alvo (ATR)", 1.0, 3.0, 2.0, 0.1)
-    stop_loss_multiplier = col2.slider("Multiplicador do Stop Loss (ATR)", 0.5, 2.0, 1.5, 0.1)
+    target_multiplier = col1.slider("Multiplicador do Alvo (ATR)", 1.0, 10.0, 2.0, 0.1)
+    stop_loss_multiplier = col2.slider("Multiplicador do Stop Loss (ATR)", 0.5, 5.0, 1.5, 0.1)
 
     # Realizar backtest
     filtered_df['Resultado'] = 0
+    filtered_df['Retorno Setup'] = 0.0  # Adicionar coluna para retorno do setup
+
     for i in range(1, len(filtered_df)):
         if filtered_df.iloc[i]['Signal'] == 'Buy':
             entry_price = filtered_df.iloc[i]['Close']
@@ -239,9 +234,11 @@ elif section == "Análise de Potencial":
             for j in range(i+1, len(filtered_df)):
                 if filtered_df.iloc[j]['High'] >= target:
                     filtered_df.at[filtered_df.index[j], 'Resultado'] = 1  # Acerto
+                    filtered_df.at[filtered_df.index[j], 'Retorno Setup'] = (target - entry_price) / entry_price  # Calcular retorno
                     break
                 elif filtered_df.iloc[j]['Low'] <= stop_loss:
                     filtered_df.at[filtered_df.index[j], 'Resultado'] = -1  # Erro
+                    filtered_df.at[filtered_df.index[j], 'Retorno Setup'] = (stop_loss - entry_price) / entry_price  # Calcular retorno negativo
                     break
 
     # Cálculo de métricas para o setup ajustado
@@ -249,9 +246,10 @@ elif section == "Análise de Potencial":
     win_trades = filtered_df[filtered_df['Resultado'] == 1].shape[0]
     loss_trades = filtered_df[filtered_df['Resultado'] == -1].shape[0]
     win_rate = (win_trades / total_trades) * 100 if total_trades > 0 else 0
-    avg_win = filtered_df[filtered_df['Resultado'] == 1]['Return'].mean()
-    avg_loss = filtered_df[filtered_df['Resultado'] == -1]['Return'].mean()
+    avg_win = filtered_df[filtered_df['Resultado'] == 1]['Retorno Setup'].mean()
+    avg_loss = filtered_df[filtered_df['Resultado'] == -1]['Retorno Setup'].mean()
     profit_factor = abs(avg_win * win_trades / (avg_loss * loss_trades)) if loss_trades > 0 else float('inf')
+    total_return = filtered_df['Retorno Setup'].sum()  # Retorno total do setup
 
     # Exibição dos resultados
     st.subheader(f"Resultados do Backtest para {selected_symbol}")
@@ -263,7 +261,7 @@ elif section == "Análise de Potencial":
     col1, col2, col3 = st.columns(3)
     col1.metric("Ganho Médio", f"{avg_win:.2%}")
     col2.metric("Perda Média", f"{avg_loss:.2%}")
-    col3.metric("Retorno Total", f"{filtered_df['Resultado'].sum() * avg_win:.2%}")
+    col3.metric("Retorno Total do Setup", f"{total_return:.2%}")
 
     # Gráfico Interativo dos Trades
     st.subheader("Visualização Gráfica dos Trades")
@@ -308,37 +306,37 @@ elif section == "Análise de Potencial":
     # Pontos de Saída de Sucesso (Acertos)
     exits_success = filtered_df[filtered_df['Resultado'] == 1]
 
-    # Marcar os pontos de acerto (saída de trades bem-sucedidos)
+    # Marcar os pontos de saída de sucesso
     fig.add_trace(go.Scatter(
         x=exits_success['Date'],
         y=exits_success['Close'],
         mode='markers',
-        marker=dict(color='green', size=10, symbol='triangle-up'),
-        name='Saída de Sucesso (Target Atingido)'
+        marker=dict(color='green', size=8, symbol='triangle-up'),
+        name='Saída (Sucesso)'
     ))
 
-    # Marcar os pontos de erro (stop loss)
+    # Pontos de Saída de Falha (Erros)
     exits_failure = filtered_df[filtered_df['Resultado'] == -1]
 
+    # Marcar os pontos de saída de falha
     fig.add_trace(go.Scatter(
         x=exits_failure['Date'],
         y=exits_failure['Close'],
         mode='markers',
-        marker=dict(color='red', size=10, symbol='triangle-down'),
-        name='Erro (Stop Loss Atingido)'
+        marker=dict(color='red', size=8, symbol='triangle-down'),
+        name='Saída (Falha)'
     ))
 
-    # Layout do gráfico
     fig.update_layout(
-        title=f"Visualização de Trades para {selected_symbol}",
-        xaxis_title='Data',
-        yaxis_title='Preço',
-        legend=dict(x=0, y=1, traceorder='normal')
+        title=f"Análise de {selected_symbol} com Configuração de Setup",
+        xaxis_title="Data",
+        yaxis_title="Preço",
+        legend_title="Elementos"
     )
 
-    # Exibir gráfico no Streamlit
-    st.plotly_chart(fig)
-
+    # Exibir gráfico interativo
+    st.plotly_chart(fig, use_container_width=True)
+    
     # Adicionar gráficos de ATR e RSI
     st.subheader("Indicadores Técnicos")
     

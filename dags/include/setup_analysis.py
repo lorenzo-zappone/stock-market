@@ -24,7 +24,7 @@ def dave_landry_analysis():
     df = df.withColumn('SMA_50', avg(col('Close')).over(window_spec.rowsBetween(-window_size_long + 1, 0)))
 
     # Calcula o retorno diário
-    df = df.withColumn('Return', (col('Close') / lag('Close').over(window_spec) - 1).cast(DoubleType()))
+    df = df.withColumn('Daily_Return', (col('Close') / lag('Close').over(window_spec) - 1).cast(DoubleType()))
 
     # Calcula o ATR (Average True Range)
     df = df.withColumn('High_Low', col('High') - col('Low'))
@@ -60,8 +60,19 @@ def dave_landry_analysis():
     df = df.withColumn('Target', col('Close') + 2 * col('ATR'))
     df = df.withColumn('Stop_Loss', col('Close') - 1.5 * col('ATR'))
 
+    # Calcula o retorno do setup (compra até venda)
+    df = df.withColumn("Return", lit(None).cast(DoubleType()))
+
+    # Lag para identificar o preço de compra no próximo sinal de venda
+    df = df.withColumn("Buy_Price", lag("Close").over(window_spec))
+
+    df = df.withColumn("Return", when(
+        (col("Signal") == "Sell") & (lag("Signal").over(window_spec) == "Buy"),
+        (col("Close") / col("Buy_Price") - 1)
+    ).otherwise(col("Return")))
+
     # Seleciona as colunas relevantes para o Streamlit
-    df_final = df.select('Date', 'Symbol','Low', 'High', 'Close', 'SMA_21', 'SMA_50', 'Signal', 'Return', 'ATR', 'RSI', 'Target', 'Stop_Loss')
+    df_final = df.select('Date', 'Symbol', 'Low', 'High', 'Open', 'Close', 'SMA_21', 'SMA_50', 'Signal', 'Daily_Return', 'ATR', 'RSI', 'Target', 'Stop_Loss', 'Return')
 
     # Salva os resultados em um novo arquivo Parquet
     output_path = '/opt/airflow/data/dave_landry_analysis.parquet'
