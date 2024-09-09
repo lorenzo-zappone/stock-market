@@ -1,6 +1,7 @@
 from airflow.decorators import dag, task
 from datetime import datetime, timedelta
 from airflow.operators.python import PythonOperator
+from airflow.operators.dagrun_operator import TriggerDagRunOperator
 from include.stock_request import nasdaq_data
 
 default_args={
@@ -26,9 +27,14 @@ def alpha_vantage_data_ingestion_dag():
         task_id='nasdaq_data',
         python_callable=nasdaq_data,
     )
+    
+    trigger_analysis_dag = TriggerDagRunOperator(
+        task_id='trigger_analysis_dag',
+        trigger_dag_id="analysis_dag",
+    )
 
     # Define a ordem das tarefas (neste caso, só temos uma)
-    fetch_data_task
+    fetch_data_task >> trigger_analysis_dag
 
 # Instancia a DAG
 alpha_vantage_data_ingestion = alpha_vantage_data_ingestion_dag()
