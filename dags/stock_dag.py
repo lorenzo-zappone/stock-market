@@ -33,7 +33,7 @@ def alpha_vantage_data_ingestion_dag():
         trigger_dag_id="analysis_dag",
     )
 
-    # Define a ordem das tarefas (neste caso, só temos uma)
+    # Define a ordem das tarefas 
     fetch_data_task >> trigger_analysis_dag
 
 # Instancia a DAG

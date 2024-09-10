@@ -175,6 +175,7 @@ elif section == "Análise de Ações":
 
 # Seção: Backtest e Simulação de Retorno
 elif section == "Análise de Potencial":
+    
     st.title("Análise de Potencial")
     st.write("Simule o percentual de acerto e o retorno financeiro.")
 
@@ -206,36 +207,69 @@ elif section == "Análise de Potencial":
     filtered_df['Close'] = pd.to_numeric(filtered_df['Close'], errors='coerce')
     filtered_df['ATR'] = pd.to_numeric(filtered_df['ATR'], errors='coerce')
 
+    # Carregar o diretório Parquet
+    # Carregar os multiplicadores otimizados
+    # Carregar o diretório Parquet
+    df_opt = pd.read_parquet('data/best_atr_multipliers.parquet')
+
+    # Obter os multiplicadores otimizados para o símbolo selecionado
+    opt_multipliers = df_opt[df_opt['Symbol'] == selected_symbol].iloc[0]
+    default_target_mult = opt_multipliers['Target_Mult']
+    default_stop_loss_mult = opt_multipliers['Stop_Loss_Mult']
+
     # Parâmetros ajustáveis pelo usuário
     st.subheader("Parâmetros de Backtest")
-    col1, col2 = st.columns(2)
-    target_multiplier = col1.slider("Multiplicador do Alvo (ATR)", 1.0, 10.0, 2.0, 0.1)
-    stop_loss_multiplier = col2.slider("Multiplicador do Stop Loss (ATR)", 0.5, 5.0, 1.5, 0.1)
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        st.subheader("Selecionar Parâmetros")
+        target_multiplier = st.slider("Multiplicador do Alvo (ATR)", 1.0, 10.0, float(default_target_mult), 0.1)
+        stop_loss_multiplier = st.slider("Multiplicador do Stop Loss (ATR)", 0.5, 5.0, float(default_stop_loss_mult), 0.1)
 
-    # Realizar backtest
+    with col2:
+        st.subheader("Multiplicadores Otimizados")
+        st.write(df_opt)
+
+        # Identificar blocos contínuos de sinais de compra e venda
+    filtered_df['Signal_Change'] = filtered_df['Signal'] != filtered_df['Signal'].shift(1)
+    filtered_df['Block_Num'] = filtered_df['Signal_Change'].cumsum()
+    filtered_df['Buy_Price'] = filtered_df.apply(lambda row: row['Close'] if row['Signal'] == 'Buy' else None, axis=1)
+    filtered_df['Sell_Price'] = filtered_df.apply(lambda row: row['Close'] if row['Signal'] == 'Sell' else None, axis=1)
+
+    # Manter o primeiro sinal de compra e o último sinal de venda em cada bloco
+    filtered_df['Buy_Price'] = filtered_df.groupby('Block_Num')['Buy_Price'].transform('first')
+    filtered_df['Sell_Price'] = filtered_df.groupby('Block_Num')['Sell_Price'].transform('last')
+
+    # Calcular o retorno baseado no bloco
     filtered_df['Resultado'] = 0
-    filtered_df['Retorno Setup'] = 0.0  # Adicionar coluna para retorno do setup
+    filtered_df['Retorno Setup'] = 0.0
+    filtered_df['Preço Entrada'] = 0.0
 
-    for i in range(1, len(filtered_df)):
+    for i in range(len(filtered_df) - 1):  # Não considerar o último dia
         if filtered_df.iloc[i]['Signal'] == 'Buy':
             entry_price = filtered_df.iloc[i]['Close']
-            target = entry_price + target_multiplier * filtered_df.iloc[i]['ATR']
-            stop_loss = entry_price - stop_loss_multiplier * filtered_df.iloc[i]['ATR']
-            
+            filtered_df.at[filtered_df.index[i], 'Preço Entrada'] = entry_price
+            target = entry_price * (1 + target_multiplier * filtered_df.iloc[i]['ATR'] / entry_price)
+            stop_loss = entry_price * (1 - stop_loss_multiplier * filtered_df.iloc[i]['ATR'] / entry_price)
+
             for j in range(i+1, len(filtered_df)):
                 if filtered_df.iloc[j]['High'] >= target:
                     filtered_df.at[filtered_df.index[j], 'Resultado'] = 1  # Acerto
-                    filtered_df.at[filtered_df.index[j], 'Retorno Setup'] = (target - entry_price) / entry_price  # Calcular retorno
+                    filtered_df.at[filtered_df.index[j], 'Retorno Setup'] = (target - entry_price) / entry_price
                     break
                 elif filtered_df.iloc[j]['Low'] <= stop_loss:
                     filtered_df.at[filtered_df.index[j], 'Resultado'] = -1  # Erro
-                    filtered_df.at[filtered_df.index[j], 'Retorno Setup'] = (stop_loss - entry_price) / entry_price  # Calcular retorno negativo
+                    filtered_df.at[filtered_df.index[j], 'Retorno Setup'] = (stop_loss - entry_price) / entry_price
                     break
+                elif j == len(filtered_df) - 1:
+                    # Se chegou ao final sem atingir target ou stop, considera o último preço
+                    filtered_df.at[filtered_df.index[j], 'Resultado'] = 0  # Trade aberto
+                    filtered_df.at[filtered_df.index[j], 'Retorno Setup'] = (filtered_df.iloc[j]['Close'] - entry_price) / entry_price
 
     # Cálculo de métricas para o setup ajustado
     total_trades = filtered_df['Resultado'].abs().sum()
     win_trades = filtered_df[filtered_df['Resultado'] == 1].shape[0]
     loss_trades = filtered_df[filtered_df['Resultado'] == -1].shape[0]
+    open_trades = filtered_df[filtered_df['Resultado'] == 0].shape[0]
     win_rate = (win_trades / total_trades) * 100 if total_trades > 0 else 0
     avg_win = filtered_df[filtered_df['Resultado'] == 1]['Retorno Setup'].mean()
     avg_loss = filtered_df[filtered_df['Resultado'] == -1]['Retorno Setup'].mean()
@@ -254,6 +288,10 @@ elif section == "Análise de Potencial":
     col2.metric("Perda Média", f"{avg_loss:.2%}")
     col3.metric("Retorno Total do Setup", f"{total_return:.2%}")
 
+    col1, col2 = st.columns(2)
+    col1.metric("Trades Abertos", open_trades)
+    col2.metric("Retorno Médio por Trade", f"{(total_return / total_trades):.2%}" if total_trades > 0 else "N/A")
+    
     # Gráfico Interativo dos Trades
     st.subheader("Visualização Gráfica dos Trades")
 
@@ -344,3 +382,4 @@ elif section == "Análise de Potencial":
     fig_rsi.add_hline(y=30, line_dash="dash", line_color="green", annotation_text="Sobrevendido")
     fig_rsi.update_layout(title='Relative Strength Index (RSI)', xaxis_title='Data', yaxis_title='RSI')
     st.plotly_chart(fig_rsi)
+    

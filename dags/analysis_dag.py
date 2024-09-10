@@ -2,6 +2,7 @@ from airflow.decorators import dag, task
 from datetime import datetime, timedelta
 from airflow.operators.python import PythonOperator
 from include.setup_analysis import dave_landry_analysis
+from include.optimizer import optimize_atr_multipliers
 
 default_args={
     'owner': 'lorenzo',
@@ -20,16 +21,23 @@ default_args={
     description='DAG para análise de dados da Alpha Vantage',
     tags=['nasdaq']
 )
+
+
 def analysis_dag():
     
     # Define a tarefa usando PythonOperator
     analysis_task = PythonOperator(
         task_id='dave_landry_setup',
-        python_callable=dave_landry_analysis
+        python_callable=dave_landry_analysis,
     )
-
-    # Define a ordem das tarefas (neste caso, só temos uma)
-    analysis_task
+    
+    optimize_task = PythonOperator(
+        task_id='optimize_atr_multipliers',
+        python_callable=optimize_atr_multipliers,
+    )
+    
+    # Define a ordem das tarefas 
+    analysis_task >> optimize_task
 
 # Instancia a DAG
 analysis_dag = analysis_dag()

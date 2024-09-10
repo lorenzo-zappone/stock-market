@@ -28,7 +28,7 @@ services:
         condition: service_healthy
     environment:
       - LOAD_EX=n
-      - EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
       - ALPHA_VANTAGE_API_KEY=${ALPHA_VANTAGE_API_KEY}
       - AIRFLOW__LOGGING__LOG_FETCH_TIMEOUT_SEC=60
@@ -67,10 +67,14 @@ services:
       - ./requirements.txt:/opt/airflow/requirements.txt
     environment:
       - LOAD_EX=n
-      - EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
       - ALPHA_VANTAGE_API_KEY=${ALPHA_VANTAGE_API_KEY}
       - AIRFLOW__LOGGING__LOG_FETCH_TIMEOUT_SEC=60
+    healthcheck:
+      test: ["CMD", "airflow", "scheduler", "health"]
+      interval: 20s
+      retries: 5
     restart: always
 
 #  spark-master:
