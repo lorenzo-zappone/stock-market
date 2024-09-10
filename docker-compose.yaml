@@ -32,6 +32,7 @@ services:
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
       - ALPHA_VANTAGE_API_KEY=${ALPHA_VANTAGE_API_KEY}
       - AIRFLOW__LOGGING__LOG_FETCH_TIMEOUT_SEC=60
+      - AIRFLOW__WEBSERVER__SECRET_KEY=${AIRFLOW_SECRET_KEY}
     logging:
       options:
         max-size: 10m
@@ -72,7 +73,7 @@ services:
       - ALPHA_VANTAGE_API_KEY=${ALPHA_VANTAGE_API_KEY}
       - AIRFLOW__LOGGING__LOG_FETCH_TIMEOUT_SEC=60
     healthcheck:
-      test: ["CMD", "airflow", "scheduler", "health"]
+      test: ["CMD", "pgrep", "-f", "airflow scheduler"]
       interval: 20s
       retries: 5
     restart: always
