@@ -221,13 +221,13 @@ elif section == "Análise de Potencial":
     st.subheader("Parâmetros de Backtest")
     col1, col2 = st.columns([1, 1])
     with col1:
-        st.subheader("Selecionar Parâmetros")
+#        st.subheader("Selecionar Parâmetros")
         target_multiplier = st.slider("Multiplicador do Alvo (ATR)", 1.0, 10.0, float(default_target_mult), 0.1)
         stop_loss_multiplier = st.slider("Multiplicador do Stop Loss (ATR)", 0.5, 5.0, float(default_stop_loss_mult), 0.1)
 
-    with col2:
-        st.subheader("Multiplicadores Otimizados")
-        st.write(df_opt)
+#    with col2:
+#        st.subheader("Multiplicadores Otimizados")
+#        st.write(df_opt)
 
         # Identificar blocos contínuos de sinais de compra e venda
     filtered_df['Signal_Change'] = filtered_df['Signal'] != filtered_df['Signal'].shift(1)
@@ -289,8 +289,7 @@ elif section == "Análise de Potencial":
     col3.metric("Retorno Total do Setup", f"{total_return:.2%}")
 
     col1, col2 = st.columns(2)
-    col1.metric("Trades Abertos", open_trades)
-    col2.metric("Retorno Médio por Trade", f"{(total_return / total_trades):.2%}" if total_trades > 0 else "N/A")
+    col1.metric("Retorno Médio por Trade", f"{(total_return / total_trades):.2%}" if total_trades > 0 else "N/A")
     
     # Gráfico Interativo dos Trades
     st.subheader("Visualização Gráfica dos Trades")
@@ -382,4 +381,3 @@ elif section == "Análise de Potencial":
     fig_rsi.add_hline(y=30, line_dash="dash", line_color="green", annotation_text="Sobrevendido")
     fig_rsi.update_layout(title='Relative Strength Index (RSI)', xaxis_title='Data', yaxis_title='RSI')
     st.plotly_chart(fig_rsi)
-    

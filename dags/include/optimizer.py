@@ -1,6 +1,6 @@
 import logging
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, when, lag, abs, lit, greatest, sum, count, last, row_number, first
+from pyspark.sql.functions import col, when, lag, abs, lit, greatest, sum, count, first, row_number
 from pyspark.sql.window import Window
 from pyspark.sql.types import DoubleType
 import time
@@ -29,58 +29,59 @@ def optimize_atr_multipliers():
     logger.info(f"Testando combinações de multiplicadores: Targets {target_multipliers}, Stop Loss {stop_loss_multipliers}")
 
     # Função para calcular o retorno para uma combinação de multiplicadores
-    def calculate_return(target_mult, stop_loss_mult):
-        logger.info(f"Calculando retornos para Target Mult: {target_mult}, Stop Loss Mult: {stop_loss_mult}")
+    def calculate_return(df, target_mult, stop_loss_mult):
         window_spec = Window.partitionBy('Symbol').orderBy('Date')
         
-        df_calc = df.withColumn('Target', col('Close') + target_mult * col('ATR'))
-        df_calc = df_calc.withColumn('Stop_Loss', col('Close') - stop_loss_mult * col('ATR'))
+        # Calcular Target e Stop Loss
+        df = df.withColumn('Target', col('Close') * (1 + target_mult * col('ATR') / col('Close')))
+        df = df.withColumn('Stop_Loss', col('Close') * (1 - stop_loss_mult * col('ATR') / col('Close')))
+        
+        # Identificar sinais de compra
+        df = df.withColumn('Entry_Price', when(col('Signal') == 'Buy', col('Close')))
+        df = df.withColumn('Entry_Price', first('Entry_Price', ignorenulls=True).over(window_spec))
 
-        # Identificar blocos contínuos de sinais de compra e venda
-        df_calc = df_calc.withColumn('Signal_Change', when(col('Signal') != lag(col('Signal'), 1).over(window_spec), col('Signal')))
-        df_calc = df_calc.withColumn('Signal_Block', first(col('Signal_Change'), ignorenulls=True).over(Window.partitionBy('Symbol').orderBy('Date').rowsBetween(Window.unboundedPreceding, Window.currentRow)))
+        # Adicionar uma coluna para o retorno inicializada com 0.0
+        df = df.withColumn('Return', lit(0.0))
         
-        # Marcar o início e o fim de blocos de compra e venda
-        df_calc = df_calc.withColumn('Block_Type', when(col('Signal_Block') == 'Buy', 'Start').when(col('Signal_Block') == 'Sell', 'End').otherwise(None))
-        df_calc = df_calc.withColumn('Block_Num', sum(when(col('Block_Type') == 'Start', 1).otherwise(0)).over(Window.partitionBy('Symbol').orderBy('Date')))
+        # Usar uma janela que vai da linha atual para todas as futuras linhas
+        forward_window = Window.partitionBy('Symbol').orderBy('Date').rowsBetween(0, Window.unboundedFollowing)
         
-        # Manter o primeiro sinal de compra e o último sinal de venda em cada bloco
-        df_calc = df_calc.withColumn('Buy_Price', when(col('Signal') == 'Buy', col('Close')).otherwise(None))
-        df_calc = df_calc.withColumn('Buy_Price', first(col('Buy_Price'), ignorenulls=True).over(Window.partitionBy('Symbol', 'Block_Num').orderBy('Date')))
+        # Iterar sobre os preços de entrada para calcular o retorno baseado no target e stop loss
+        df = df.withColumn('Return', 
+                           when((col('High') >= col('Target')), (col('Target') / col('Entry_Price') - 1))
+                           .when((col('Low') <= col('Stop_Loss')), (col('Stop_Loss') / col('Entry_Price') - 1))
+                           .otherwise((col('Close') / col('Entry_Price') - 1))
+                          )
         
-        df_calc = df_calc.withColumn('Sell_Price', when(col('Signal') == 'Sell', col('Close')).otherwise(None))
-        df_calc = df_calc.withColumn('Sell_Price', last(col('Sell_Price'), ignorenulls=True).over(Window.partitionBy('Symbol', 'Block_Num').orderBy('Date')))
+        # Ajustar retornos apenas para trades fechados (target ou stop_loss atingidos)
+        df = df.withColumn('Return', 
+                           when((col('High') >= col('Target')) | (col('Low') <= col('Stop_Loss')), col('Return'))
+                           .otherwise(0.0))
         
-        df_calc = df_calc.withColumn('Return', 
-            when((col('High') >= col('Target')) & (col('Buy_Price').isNotNull()) & (col('Sell_Price').isNotNull()), 
-                 (col('Sell_Price') / col('Buy_Price') - 1))
-            .when((col('Low') <= col('Stop_Loss')) & (col('Buy_Price').isNotNull()), 
-                  (col('Stop_Loss') / col('Buy_Price') - 1))
-            .when((col('Signal') == 'Sell') & (col('Buy_Price').isNotNull()) & (col('Sell_Price').isNull()), 
-                  (col('Close') / col('Buy_Price') - 1))
-            .otherwise(0))
+        # Agregar os resultados
+        result = df.groupBy('Symbol').agg(
+            sum('Return').alias('Total_Return'),
+            count(when(col('Return') != 0, True)).alias('Trade_Count')
+        )
         
-        return df_calc.select('Symbol', 'Return')
+        return result
 
     # Testar todas as combinações de multiplicadores
     results = []
     total_combinations = len(target_multipliers) * len(stop_loss_multipliers)
     current_combination = 0
-    
+
     for target_mult in target_multipliers:
         for stop_loss_mult in stop_loss_multipliers:
             current_combination += 1
             logger.info(f"Processando combinação {current_combination} de {total_combinations}")
             
-            returns = calculate_return(target_mult, stop_loss_mult)
+            returns = calculate_return(df, target_mult, stop_loss_mult)
             
-            total_return = returns.groupBy('Symbol').agg(
-                sum('Return').alias('Total_Return'),
-                count(when(col('Return') != 0, True)).alias('Trade_Count')
-            )
+            total_return = returns.withColumn('Target_Mult', lit(target_mult)) \
+                                  .withColumn('Stop_Loss_Mult', lit(stop_loss_mult))
             
-            results.append(total_return.withColumn('Target_Mult', lit(target_mult))
-                                       .withColumn('Stop_Loss_Mult', lit(stop_loss_mult)))
+            results.append(total_return)
 
     logger.info("Combinando todos os resultados")
     # Combinar todos os resultados
