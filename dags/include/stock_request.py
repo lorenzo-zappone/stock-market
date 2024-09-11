@@ -16,7 +16,7 @@ if not API_KEY:
     raise ValueError("API Key não encontrada. Por favor, verifique o arquivo .env.")
 
 # Lista das 10 maiores ações da NASDAQ (ajuste conforme necessário)
-nasdaq_top_10 = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'FB', 'NVDA', 'TSLA', 'ASML', 'NFLX', 'ADBE']
+nasdaq_top_10 = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'NVDA', 'TSLA', 'SPOT', 'NFLX', 'NU']
 
 # URL base da API da Alpha Vantage para a função TIME_SERIES_DAILY
 BASE_URL = 'https://www.alphavantage.co/query'
