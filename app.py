@@ -25,7 +25,7 @@ file_size_mb = sum(os.path.getsize(os.path.join(parquet_dir, f)) for f in os.lis
 # Converter colunas para tipos numéricos, erros='coerce' irá lidar com valores não numéricos
 df['Close'] = pd.to_numeric(df['Close'], errors='coerce')
 df['SMA_21'] = pd.to_numeric(df['SMA_21'], errors='coerce')
-df['SMA_50'] = pd.to_numeric(df['SMA_50'], errors='coerce')
+df['SMA_80'] = pd.to_numeric(df['SMA_80'], errors='coerce')
 
 # Garantir que a coluna Date é do tipo datetime
 df['Date'] = pd.to_datetime(df['Date'])
@@ -35,7 +35,7 @@ df['Return'] = df.groupby('Symbol')['Close'].pct_change()
 
 # Sidebar para navegação
 st.sidebar.title("Menu")
-section = st.sidebar.radio("Ir para", ["Visão Geral", "Análise de Ações", "Análise de Potencial"])
+section = st.sidebar.radio("Ir para", ["Visão Geral", "Análise de Ações", "Análise de Potencial", "Entradas Recentes"])
 
 # Seção: Visão Geral
 if section == "Visão Geral":
@@ -150,7 +150,7 @@ elif section == "Análise de Ações":
         filtered_df = filtered_df.set_index('Date').resample('W-Mon').agg({
             'Close': 'last',
             'SMA_21': 'last',
-            'SMA_50': 'last',
+            'SMA_80': 'last',
             'Return': 'sum',
             'Signal': 'last'
         }).reset_index().sort_values(by='Date', ascending=False)
@@ -158,7 +158,7 @@ elif section == "Análise de Ações":
         filtered_df = filtered_df.set_index('Date').resample('M').agg({
             'Close': 'last',
             'SMA_21': 'last',
-            'SMA_50': 'last',
+            'SMA_80': 'last',
             'Return': 'sum',
             'Signal': 'last'
         }).reset_index().sort_values(by='Date', ascending=False)
@@ -167,8 +167,8 @@ elif section == "Análise de Ações":
     st.write(f"Dados para {selected_symbol} ({timeframe})")
     st.write(filtered_df)
 
-    # Plotar o preço de fechamento com SMA_21 e SMA_50
-    fig = px.line(filtered_df, x='Date', y=['Close', 'SMA_21', 'SMA_50'], 
+    # Plotar o preço de fechamento com SMA_21 e SMA_80
+    fig = px.line(filtered_df, x='Date', y=['Close', 'SMA_21', 'SMA_80'], 
                   labels={'value': 'Preço', 'variable': 'Indicador'},
                   title=f"Preço e Médias Móveis para {selected_symbol} ({timeframe})")
     st.plotly_chart(fig)
@@ -207,27 +207,13 @@ elif section == "Análise de Potencial":
     filtered_df['Close'] = pd.to_numeric(filtered_df['Close'], errors='coerce')
     filtered_df['ATR'] = pd.to_numeric(filtered_df['ATR'], errors='coerce')
 
-    # Carregar o diretório Parquet
-    # Carregar os multiplicadores otimizados
-    # Carregar o diretório Parquet
-    df_opt = pd.read_parquet('data/best_atr_multipliers.parquet')
-
-    # Obter os multiplicadores otimizados para o símbolo selecionado
-    opt_multipliers = df_opt[df_opt['Symbol'] == selected_symbol].iloc[0]
-    default_target_mult = opt_multipliers['Target_Mult']
-    default_stop_loss_mult = opt_multipliers['Stop_Loss_Mult']
-
     # Parâmetros ajustáveis pelo usuário
     st.subheader("Parâmetros de Backtest")
     col1, col2 = st.columns([1, 1])
     with col1:
 #        st.subheader("Selecionar Parâmetros")
-        target_multiplier = st.slider("Multiplicador do Alvo (ATR)", 1.0, 10.0, float(default_target_mult), 0.1)
-        stop_loss_multiplier = st.slider("Multiplicador do Stop Loss (ATR)", 0.5, 5.0, float(default_stop_loss_mult), 0.1)
-
-#    with col2:
-#        st.subheader("Multiplicadores Otimizados")
-#        st.write(df_opt)
+        target_multiplier = st.slider("Multiplicador do Alvo (ATR)", 1.0, 10.0, 0.1)
+        stop_loss_multiplier = st.slider("Multiplicador do Stop Loss (ATR)", 0.5, 5.0, 0.1)
 
         # Identificar blocos contínuos de sinais de compra e venda
     filtered_df['Signal_Change'] = filtered_df['Signal'] != filtered_df['Signal'].shift(1)
@@ -314,9 +300,9 @@ elif section == "Análise de Potencial":
 
     fig.add_trace(go.Scatter(
         x=filtered_df['Date'],
-        y=filtered_df['SMA_50'],
+        y=filtered_df['SMA_80'],
         mode='lines',
-        name='SMA 50'
+        name='SMA 80'
     ))
 
     # Pontos de Entrada (Sinal de Compra)
@@ -381,3 +367,45 @@ elif section == "Análise de Potencial":
     fig_rsi.add_hline(y=30, line_dash="dash", line_color="green", annotation_text="Sobrevendido")
     fig_rsi.update_layout(title='Relative Strength Index (RSI)', xaxis_title='Data', yaxis_title='RSI')
     st.plotly_chart(fig_rsi)
+    
+# Seção: Entradas Recentes
+elif section == "Entradas Recentes":
+
+    st.title("Entradas Recentes")
+    st.write("Visualize as entradas de compra que ocorreram no último mês.")
+
+    if 'df' in locals():
+        # Filtrar as entradas de compra (sinal de 'Buy')
+        buy_entries = df[df['Signal'] == 'Buy']
+
+        # Filtrar por entradas no último mês
+        last_month = pd.to_datetime('today') - pd.DateOffset(days=30)
+        recent_buy_entries = buy_entries[buy_entries['Date'] >= last_month]
+
+        # Verificar se há entradas recentes
+        if not recent_buy_entries.empty:
+            st.subheader("Entradas de Compra Recentes")
+
+            # Agrupar por ação e calcular o número de entradas
+            entries_by_symbol = recent_buy_entries.groupby('Symbol').size().reset_index(name='Número de Entradas')
+            st.write("Número de Entradas por Ação")
+            st.bar_chart(entries_by_symbol.set_index('Symbol'))
+
+            # Exibir a tabela com as entradas recentes
+            st.subheader("Tabela de Entradas Recentes")
+            recent_buy_entries_display = recent_buy_entries[['Date', 'Symbol', 'Close', 'ATR', 'SMA_21', 'SMA_80']].sort_values(by='Date', ascending=False)
+            recent_buy_entries_display.columns = ['Data da Entrada', 'Símbolo', 'Preço de Entrada', 'ATR', 'SMA 21', 'SMA 80']
+            st.dataframe(recent_buy_entries_display)
+
+            # Gráfico das Entradas Recentes por Ação
+            st.subheader("Gráfico das Entradas Recentes por Ação")
+            fig = px.scatter(recent_buy_entries, x='Date', y='Close', color='Symbol',
+                             labels={'Date': 'Data da Entrada', 'Close': 'Preço de Entrada'},
+                             title='Entradas de Compra Recentes por Ação')
+            st.plotly_chart(fig, use_container_width=True)
+
+        else:
+            st.write("Nenhuma entrada de compra nos últimos 30 dias.")
+    else:
+        st.write("Erro: `df` não está definido. Certifique-se de que os dados foram carregados corretamente.")
+

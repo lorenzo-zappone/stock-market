@@ -16,12 +16,12 @@ def dave_landry_analysis():
 
     # Definir o tamanho das janelas para médias móveis
     window_size_short = 21
-    window_size_long = 50
+    window_size_long = 80
 
     # Calcula médias móveis
     window_spec = Window.partitionBy('Symbol').orderBy('Date')
     df = df.withColumn('SMA_21', avg(col('Close')).over(window_spec.rowsBetween(-window_size_short + 1, 0)))
-    df = df.withColumn('SMA_50', avg(col('Close')).over(window_spec.rowsBetween(-window_size_long + 1, 0)))
+    df = df.withColumn('SMA_80', avg(col('Close')).over(window_spec.rowsBetween(-window_size_long + 1, 0)))
 
     # Calcula o retorno diário
     df = df.withColumn('Daily_Return', (col('Close') / lag('Close').over(window_spec) - 1).cast(DoubleType()))
@@ -45,14 +45,14 @@ def dave_landry_analysis():
     # Identifica sinais de compra e venda com filtros adicionais
     df = df.withColumn('Signal',
         when(
-            (col('SMA_21') > col('SMA_50')) &  # Condição original
+            (col('SMA_21') > col('SMA_80')) &  # Condição original
             (col('Close') > col('SMA_21')) &  # Preço acima da SMA_21
-            (col('Volume') > avg(col('Volume')).over(window_spec.rowsBetween(-19, 0))) &  # Volume acima da média de 20 dias
+            (col('Volume') > avg(col('Volume')).over(window_spec.rowsBetween(-9, 0))) &  # Volume acima da média de 10 dias
             (col('Close') > lag('Close').over(window_spec)) &  # Preço em tendência de alta
             (col('RSI') < 70),  # RSI não sobrecomprado
             'Buy'
         )
-        .when(col('SMA_21') < col('SMA_50'), 'Sell')
+        .when(col('SMA_21') < col('SMA_80'), 'Sell')
         .otherwise('Hold')
     )
 
@@ -72,7 +72,7 @@ def dave_landry_analysis():
     ).otherwise(col("Return")))
 
     # Seleciona as colunas relevantes para o Streamlit
-    df_final = df.select('Date', 'Symbol', 'Low', 'High', 'Open', 'Close', 'SMA_21', 'SMA_50', 'Signal', 'Daily_Return', 'ATR', 'RSI', 'Target', 'Stop_Loss', 'Return')
+    df_final = df.select('Date', 'Symbol', 'Low', 'High', 'Open', 'Close', 'SMA_21', 'SMA_80', 'Signal', 'Daily_Return', 'ATR', 'RSI', 'Target', 'Stop_Loss', 'Return')
 
     # Salva os resultados em um novo arquivo Parquet
     output_path = '/opt/airflow/data/dave_landry_analysis.parquet'
