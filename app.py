@@ -165,7 +165,7 @@ elif section == "Análise de Ações":
 
     # Exibir o DataFrame filtrado
     st.write(f"Dados para {selected_symbol} ({timeframe})")
-    st.write(filtered_df)
+    st.dataframe(filtered_df,use_container_width=True, hide_index=True)
 
     # Plotar o preço de fechamento com SMA_21 e SMA_80
     fig = px.line(filtered_df, x='Date', y=['Close', 'SMA_21', 'SMA_80'], 
@@ -395,7 +395,9 @@ elif section == "Entradas Recentes":
             st.subheader("Tabela de Entradas Recentes")
             recent_buy_entries_display = recent_buy_entries[['Date', 'Symbol', 'Close', 'ATR', 'SMA_21', 'SMA_80']].sort_values(by='Date', ascending=False)
             recent_buy_entries_display.columns = ['Data da Entrada', 'Símbolo', 'Preço de Entrada', 'ATR', 'SMA 21', 'SMA 80']
-            st.dataframe(recent_buy_entries_display)
+            
+            # Ajustar a tabela para usar a largura total disponível
+            st.dataframe(recent_buy_entries_display, use_container_width=True, hide_index=True)
 
             # Gráfico das Entradas Recentes por Ação
             st.subheader("Gráfico das Entradas Recentes por Ação")
@@ -408,4 +410,3 @@ elif section == "Entradas Recentes":
             st.write("Nenhuma entrada de compra nos últimos 30 dias.")
     else:
         st.write("Erro: `df` não está definido. Certifique-se de que os dados foram carregados corretamente.")
-
