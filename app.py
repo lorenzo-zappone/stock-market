@@ -263,7 +263,7 @@ elif section == "Análise de Potencial":
                     filtered_df.at[filtered_df.index[j], 'Resultado'] = 0  # Trade aberto
                     filtered_df.at[filtered_df.index[j], 'Retorno Setup'] = (filtered_df.iloc[j]['Close'] - entry_price) / entry_price
 
-    # Cálculo de métricas para o setup ajustado
+    # Cálculo de métricas 
     total_trades = filtered_df['Resultado'].abs().sum()
     win_trades = filtered_df[filtered_df['Resultado'] == 1].shape[0]
     loss_trades = filtered_df[filtered_df['Resultado'] == -1].shape[0]
