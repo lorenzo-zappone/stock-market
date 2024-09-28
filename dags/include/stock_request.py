@@ -4,6 +4,16 @@ import pandas as pd
 from dotenv import load_dotenv
 import os
 from pyspark.sql import SparkSession
+import logging
+
+# Configuração do logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler()  # Adicionar logging para a saída padrão (console)
+    ]
+)
 
 # Carregar as variáveis de ambiente do arquivo .env
 load_dotenv()
@@ -34,14 +44,15 @@ async def fetch_data(session, symbol, max_retries=3):
         try:
             async with session.get(BASE_URL, params=params) as response:
                 response.raise_for_status()
+                logging.info(f"Sucesso na requisição para {symbol}")
                 return await response.json()
         except aiohttp.ClientError as e:
-            print(f"Erro de requisição para {symbol}: {e}")
-        
-        print(f"Tentativa {attempt + 1} de {max_retries} falhou. Tentando novamente...")
+            logging.error(f"Falha na requisição para {symbol}: {e}")
+
+        logging.warning(f"Tentativa {attempt + 1} de {max_retries} falhou para {symbol}. Tentando novamente...")
         await asyncio.sleep(10)  # Aguardar 10 segundos antes de tentar novamente
 
-    print(f"Falha ao buscar dados para {symbol} após {max_retries} tentativas.")
+    logging.error(f"Falha ao buscar dados para {symbol} após {max_retries} tentativas.")
     return None
 
 async def fetch_all_data(symbols):
@@ -60,6 +71,8 @@ def nasdaq_data():
         .config("spark.driver.bindAddress", "0.0.0.0") \
         .config("spark.ui.port", "4040") \
         .getOrCreate()
+
+    logging.info("Sessão Spark inicializada.")
 
     # Obter dados das ações de forma assíncrona
     all_data = asyncio.run(fetch_all_data(nasdaq_top_10))
@@ -82,6 +95,7 @@ def nasdaq_data():
             })
             df['Symbol'] = symbol
             processed_data.append(df)
+            logging.info(f"Dados processados para {symbol}.")
 
     # Combine todos os DataFrames individuais em um só
     if processed_data:
@@ -93,11 +107,13 @@ def nasdaq_data():
         spark_df = spark.createDataFrame(combined_data)
 
         # Salva os dados em um formato Parquet
-        spark_df.write.mode('overwrite').parquet('/opt/airflow/data/nasdaq_top_10_daily.parquet')
-        print("Dados salvos em '/opt/airflow/data/nasdaq_top_10_daily.parquet'.")
+        output_path = '/opt/airflow/data/nasdaq_top_10_daily.parquet'
+        spark_df.write.mode('overwrite').parquet(output_path)
+        logging.info(f"Dados salvos em '{output_path}'.")
 
     # Finalizar a sessão Spark
     spark.stop()
+    logging.info("Sessão Spark finalizada.")
 
 if __name__ == "__main__":
     nasdaq_data()
