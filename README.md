@@ -12,7 +12,7 @@ This **Stock Market Backtesting Tool** is designed to help traders and data enth
 
 This tool is perfect for those looking to refine their stock market strategies with **data-driven insights**. Whether you're a seasoned trader or just getting started, this app provides the flexibility and power to explore various setups and improve decision-making.
 
-## Disclaimer
+## ❗ Disclaimer ❗
 
 This project is intended for **educational purposes only**. None of the information, strategies, or analyses provided by this tool should be interpreted as a **recommendation** for any specific trading action or financial decision. Always conduct your own research and consult with financial professionals before making investment choices.
 
