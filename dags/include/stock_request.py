@@ -1,6 +1,6 @@
-import requests
+import aiohttp
+import asyncio
 import pandas as pd
-import time
 from dotenv import load_dotenv
 import os
 from pyspark.sql import SparkSession
@@ -21,8 +21,8 @@ nasdaq_top_10 = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'NVDA', 'TSLA', 'SPOT'
 # URL base da API da Alpha Vantage para a função TIME_SERIES_DAILY
 BASE_URL = 'https://www.alphavantage.co/query'
 
-def fetch_data(symbol, max_retries=3):
-    """Faz uma requisição resiliente à API da Alpha Vantage para um símbolo de ação especificado."""
+async def fetch_data(session, symbol, max_retries=3):
+    """Faz uma requisição resiliente e assíncrona à API da Alpha Vantage para um símbolo de ação especificado."""
     params = {
         'function': 'TIME_SERIES_DAILY',
         'symbol': symbol,
@@ -32,23 +32,28 @@ def fetch_data(symbol, max_retries=3):
 
     for attempt in range(max_retries):
         try:
-            response = requests.get(BASE_URL, params=params)
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.HTTPError as http_err:
-            print(f"Erro HTTP para {symbol}: {http_err}")
-        except requests.exceptions.RequestException as req_err:
-            print(f"Erro de requisição para {symbol}: {req_err}")
+            async with session.get(BASE_URL, params=params) as response:
+                response.raise_for_status()
+                return await response.json()
+        except aiohttp.ClientError as e:
+            print(f"Erro de requisição para {symbol}: {e}")
         
         print(f"Tentativa {attempt + 1} de {max_retries} falhou. Tentando novamente...")
-        time.sleep(10)  # Aguardar 10 segundos antes de tentar novamente
-    
+        await asyncio.sleep(10)  # Aguardar 10 segundos antes de tentar novamente
+
     print(f"Falha ao buscar dados para {symbol} após {max_retries} tentativas.")
     return None
 
+async def fetch_all_data(symbols):
+    async with aiohttp.ClientSession() as session:
+        tasks = []
+        for symbol in symbols:
+            tasks.append(fetch_data(session, symbol))
+        # Executa todas as requisições assíncronas de forma concorrente
+        return await asyncio.gather(*tasks)
+
 def nasdaq_data():
     # Inicializar a sessão Spark
-    # Configurar o Spark com o mestre 'local' e ajustar as opções necessárias
     spark = SparkSession.builder \
         .appName("AlphaVantageDataIngestion") \
         .config("spark.master", "local[*]") \
@@ -56,12 +61,13 @@ def nasdaq_data():
         .config("spark.ui.port", "4040") \
         .getOrCreate()
 
-    # Cria um DataFrame para armazenar os dados de todas as ações
-    all_data = []
+    # Obter dados das ações de forma assíncrona
+    all_data = asyncio.run(fetch_all_data(nasdaq_top_10))
 
-    for symbol in nasdaq_top_10:
-        print(f"Buscando dados para {symbol}...")
-        data = fetch_data(symbol)
+    # Cria um DataFrame para armazenar os dados de todas as ações
+    processed_data = []
+
+    for data, symbol in zip(all_data, nasdaq_top_10):
         if data:
             # Extraia os dados de preço diário
             time_series = data.get('Time Series (Daily)', {})
@@ -75,17 +81,14 @@ def nasdaq_data():
                 '5. volume': 'Volume'
             })
             df['Symbol'] = symbol
-            # Adicione ao DataFrame principal
-            all_data.append(df)
-        # Para evitar exceder o limite de chamadas de API da Alpha Vantage, adicione um atraso
-        time.sleep(12)
+            processed_data.append(df)
 
     # Combine todos os DataFrames individuais em um só
-    if all_data:
-        combined_data = pd.concat(all_data)
+    if processed_data:
+        combined_data = pd.concat(processed_data)
         combined_data.index.name = 'Date'
         combined_data = combined_data.reset_index()
-        
+
         # Converter o DataFrame do Pandas para DataFrame do Spark
         spark_df = spark.createDataFrame(combined_data)
 
@@ -95,3 +98,6 @@ def nasdaq_data():
 
     # Finalizar a sessão Spark
     spark.stop()
+
+if __name__ == "__main__":
+    nasdaq_data()
