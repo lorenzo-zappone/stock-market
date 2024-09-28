@@ -28,11 +28,15 @@ def calculate_file_size(parquet_dir):
 
 file_size_mb = calculate_file_size(parquet_dir)
 
-# Converter colunas para tipos numéricos e garantir que a coluna Date é datetime
-df['Close'] = pd.to_numeric(df['Close'], errors='coerce')
-df['SMA_21'] = pd.to_numeric(df['SMA_21'], errors='coerce')
-df['SMA_80'] = pd.to_numeric(df['SMA_80'], errors='coerce')
-df['Date'] = pd.to_datetime(df['Date'])
+# Defina uma lista com os nomes das colunas que precisam ser convertidas para tipos numéricos
+numeric_columns = ['Close', 'SMA_21', 'SMA_80', 'High', 'Low', 'ATR']
+
+# Utilize um loop para converter as colunas para numérico, lidando com erros
+for column in numeric_columns:
+    df[column] = pd.to_numeric(df[column], errors='coerce')
+
+# Converta a coluna 'Date' para datetime
+df['Date'] = pd.to_datetime(df['Date'], errors='coerce')  # Adicione errors='coerce' para evitar falhas
 
 # Calcular retornos diários
 df['Return'] = df.groupby('Symbol')['Close'].pct_change()
@@ -177,6 +181,7 @@ elif section == "Análise de Potencial":
     st.title("Análise de Potencial")
     st.write("Simule o percentual de acerto e o retorno financeiro.")
 
+    # Seleção do símbolo de ação
     symbols = df['Symbol'].unique()
     selected_symbol = st.selectbox("Selecione um símbolo de ação para o backtest:", symbols)
 
@@ -193,12 +198,12 @@ elif section == "Análise de Potencial":
     # Filtrar os dados pelo intervalo de datas selecionado
     filtered_df = filtered_df[(filtered_df['Date'] >= pd.to_datetime(start_date)) & (filtered_df['Date'] <= pd.to_datetime(end_date))]
 
-    # Simulação de acerto
+    # Simulação de acertos
     st.subheader(f"Simulação de Acertos - {selected_symbol}")
     acertos = filtered_df['Signal'].value_counts(normalize=True) * 100
     st.write(acertos)
 
-    # Plotar sinais 
+    # Gráfico de Sinais
     st.subheader("Gráfico de Sinais")
     signal_color_map = {'Buy': 'green', 'Sell': 'red'}
 
@@ -212,6 +217,74 @@ elif section == "Análise de Potencial":
         title=f"Sinais de Compra e Venda - {selected_symbol}"
     )
     st.plotly_chart(fig, use_container_width=True)
+
+    # Parâmetros ajustáveis pelo usuário para Backtest
+    st.subheader("Parâmetros de Backtest")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        target_multiplier = st.slider("Multiplicador do Alvo (ATR)", 1.0, 10.0, 10.0, 0.1)
+    with col2:
+        stop_loss_multiplier = st.slider("Multiplicador do Stop Loss (ATR)", 0.5, 5.0, 5.0, 0.1)
+
+    # Cálculo do Backtest
+    filtered_df['Signal_Change'] = filtered_df['Signal'] != filtered_df['Signal'].shift(1)
+    filtered_df['Block_Num'] = filtered_df['Signal_Change'].cumsum()
+    filtered_df['Buy_Price'] = filtered_df.apply(lambda row: row['Close'] if row['Signal'] == 'Buy' else None, axis=1)
+    filtered_df['Sell_Price'] = filtered_df.apply(lambda row: row['Close'] if row['Signal'] == 'Sell' else None, axis=1)
+
+    # Manter o primeiro sinal de compra e o último sinal de venda em cada bloco
+    filtered_df['Buy_Price'] = filtered_df.groupby('Block_Num')['Buy_Price'].transform('first')
+    filtered_df['Sell_Price'] = filtered_df.groupby('Block_Num')['Sell_Price'].transform('last')
+
+    # Calcular o retorno baseado no bloco
+    filtered_df['Resultado'] = 0
+    filtered_df['Retorno Setup'] = 0.0
+    filtered_df['Preço Entrada'] = 0.0
+
+    for i in range(len(filtered_df) - 1):  # Não considerar o último dia
+        if filtered_df.iloc[i]['Signal'] == 'Buy':
+            entry_price = filtered_df.iloc[i]['Close']
+            filtered_df.at[filtered_df.index[i], 'Preço Entrada'] = entry_price
+            target = entry_price * (1 + target_multiplier * filtered_df.iloc[i]['ATR'] / entry_price)
+            stop_loss = entry_price * (1 - stop_loss_multiplier * filtered_df.iloc[i]['ATR'] / entry_price)
+
+            for j in range(i+1, len(filtered_df)):
+                if filtered_df.iloc[j]['High'] >= target:
+                    filtered_df.at[filtered_df.index[j], 'Resultado'] = 1  # Acerto
+                    filtered_df.at[filtered_df.index[j], 'Retorno Setup'] = (target - entry_price) / entry_price
+                    break
+                elif filtered_df.iloc[j]['Low'] <= stop_loss:
+                    filtered_df.at[filtered_df.index[j], 'Resultado'] = -1  # Erro
+                    filtered_df.at[filtered_df.index[j], 'Retorno Setup'] = (stop_loss - entry_price) / entry_price
+                    break
+                elif j == len(filtered_df) - 1:
+                    # Se chegou ao final sem atingir target ou stop, considera o último preço
+                    filtered_df.at[filtered_df.index[j], 'Resultado'] = 0  # Trade aberto
+                    filtered_df.at[filtered_df.index[j], 'Retorno Setup'] = (filtered_df.iloc[j]['Close'] - entry_price) / entry_price
+
+    # Cálculo de métricas para o setup ajustado
+    total_trades = filtered_df['Resultado'].abs().sum()
+    win_trades = filtered_df[filtered_df['Resultado'] == 1].shape[0]
+    loss_trades = filtered_df[filtered_df['Resultado'] == -1].shape[0]
+    open_trades = filtered_df[filtered_df['Resultado'] == 0].shape[0]
+    win_rate = (win_trades / total_trades) * 100 if total_trades > 0 else 0
+    avg_win = filtered_df[filtered_df['Resultado'] == 1]['Retorno Setup'].mean()
+    avg_loss = filtered_df[filtered_df['Resultado'] == -1]['Retorno Setup'].mean()
+    profit_factor = abs(avg_win * win_trades / (avg_loss * loss_trades)) if loss_trades > 0 else float('inf')
+    total_return = filtered_df['Retorno Setup'].sum()  # Retorno total do setup
+
+    # Exibição dos resultados
+    st.subheader(f"Resultados do Backtest para {selected_symbol}")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Total de Trades", total_trades)
+    col2.metric("Taxa de Acerto", f"{win_rate:.2f}%")
+    col3.metric("Retorno Médio por Trade", f"{(total_return / total_trades):.2%}" if total_trades > 0 else "N/A")
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Ganho Médio", f"{avg_win:.2%}")
+    col2.metric("Perda Média", f"{avg_loss:.2%}")
+    col3.metric("Retorno Total do Setup", f"{total_return:.2%}")
 
 # Seção: Entradas Recentes
 elif section == "Entradas Recentes":
@@ -227,7 +300,7 @@ elif section == "Entradas Recentes":
 
     # Exibir tabela com os sinais de compra recentes
     st.write("Sinais de Compra Recentes")
-    st.dataframe(buy_signals[['Date', 'Symbol', 'Close']], use_container_width=True, hide_index=True)
+    st.dataframe(buy_signals[['Date', 'Symbol', 'Close']].head(10), use_container_width=True, hide_index=True)
 
     # Criar gráfico para sinais de compra
     if not buy_signals.empty:
